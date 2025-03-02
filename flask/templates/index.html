@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Bird Call Downloader</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>🐦 Bird Call Downloader</h1>
+        <p>Download bird calls from Xeno-Canto and eBird/Macaulay Library</p>
+
+        <div class="download-form-container">
+            <form id="download-form">
+                <h2>Download Bird Calls</h2>
+                
+                <!-- General Settings -->
+                <div class="section">
+                    <h3>Download Location</h3>
+                    <div class="form-group directory-picker">
+                        <label for="download_dir">Download Directory</label>
+                        <div class="directory-input-group">
+                            <input type="text" id="download_dir" name="download_dir" value="{{ config.download_dir }}">
+                            <button type="button" id="browse-btn" class="btn">Browse...</button>
+                        </div>
+                        <p class="form-help">Directory where bird call recordings will be saved</p>
+                    </div>
+                </div>
+                
+                <!-- Xeno-Canto Settings -->
+                <div class="section">
+                    <div class="section-header">
+                        <h3>Xeno-Canto Settings</h3>
+                        <div class="toggle-container">
+                            <label class="toggle-label">
+                                <input type="checkbox" id="xeno_enabled" name="xeno_enabled" checked>
+                                <span>Enable</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="section-content" id="xeno-settings">
+                        <p class="note">At least one of Country or Location must be specified</p>
+                        <div class="form-row">
+                            <div class="form-group half">
+                                <label for="xeno_country">Country (e.g. 'malaysia')</label>
+                                <input type="text" id="xeno_country" name="xeno_country" value="{{ config.xeno.country or '' }}">
+                            </div>
+                            <div class="form-group half">
+                                <label for="xeno_location">Location (more specific than country)</label>
+                                <input type="text" id="xeno_location" name="xeno_location" value="{{ config.xeno.location or '' }}">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group half">
+                                <label for="xeno_min_length">Minimum Length (seconds)</label>
+                                <input type="number" id="xeno_min_length" name="xeno_min_length" value="{{ config.xeno.min_length_seconds or 0 }}" min="0">
+                            </div>
+                            <div class="form-group half">
+                                <label for="xeno_max_length">Maximum Length (seconds)</label>
+                                <input type="number" id="xeno_max_length" name="xeno_max_length" value="{{ config.xeno.max_length_seconds or 300 }}" min="0">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group half">
+                                <label for="xeno_better_than">Better Than Rating</label>
+                                <select id="xeno_better_than" name="xeno_better_than">
+                                    <option value="A" {% if config.xeno.better_than_rating == "A" %}selected{% endif %}>A</option>
+                                    <option value="B" {% if config.xeno.better_than_rating == "B" %}selected{% endif %}>B</option>
+                                    <option value="C" {% if config.xeno.better_than_rating == "C" %}selected{% endif %}>C</option>
+                                    <option value="D" {% if config.xeno.better_than_rating == "D" %}selected{% endif %}>D</option>
+                                    <option value="E" {% if config.xeno.better_than_rating == "E" %}selected{% endif %}>E</option>
+                                    <option value="" {% if not config.xeno.better_than_rating %}selected{% endif %}>Any Quality</option>
+                                </select>
+                            </div>
+                            <div class="form-group half">
+                                <label for="xeno_max_per_species">Max Recordings Per Species</label>
+                                <input type="number" id="xeno_max_per_species" name="xeno_max_per_species" value="{{ config.xeno.max_per_species }}" min="1" max="20">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- eBird/Macaulay Library Settings -->
+                <div class="section">
+                    <div class="section-header">
+                        <h3>eBird/Macaulay Library Settings</h3>
+                        <div class="toggle-container">
+                            <label class="toggle-label">
+                                <input type="checkbox" id="ebird_enabled" name="ebird_enabled" checked>
+                                <span>Enable</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="section-content" id="ebird-settings">
+                        <div class="form-row">
+                            <div class="form-group half">
+                                <label for="ebird_api_key">eBird API Key</label>
+                                <input type="text" id="ebird_api_key" name="ebird_api_key" value="{{ config.ebird.api_key }}">
+                            </div>
+                            <div class="form-group half">
+                                <label for="ebird_region">Primary Region Code (e.g. 'MY' or 'US-NY')</label>
+                                <input type="text" id="ebird_region" name="ebird_region" value="{{ config.ebird.region_code }}">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group half">
+                                <label for="backup_regions">Backup Region Codes (comma-separated)</label>
+                                <input type="text" id="backup_regions" name="backup_regions" value="{{ backup_regions }}">
+                            </div>
+                            <div class="form-group half">
+                                <label for="ebird_max_per_species">Max Recordings Per Species</label>
+                                <input type="number" id="ebird_max_per_species" name="ebird_max_per_species" value="{{ config.ebird.max_per_species }}" min="1" max="20">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Start Download Button -->
+                <div class="form-actions">
+                    <button type="submit" class="btn primary" id="download-btn">Start Downloads</button>
+                </div>
+            </form>
+            
+            <div id="message" class="message hidden"></div>
+        </div>
+        
+        <!-- Progress Section (initially hidden) -->
+        <div id="progress-section" class="hidden">
+            <h2>Download Progress</h2>
+            
+            <div class="progress-container">
+                <h3>Xeno-Canto Download</h3>
+                <div class="progress">
+                    <div class="progress-bar" id="xeno-progress" style="width: 0%;">0%</div>
+                </div>
+                
+                <h3>eBird/Macaulay Library Download</h3>
+                <div class="progress">
+                    <div class="progress-bar" id="ebird-progress" style="width: 0%;">0%</div>
+                </div>
+                
+                <div class="status-message" id="status-message">Starting downloads...</div>
+                
+                <div class="download-complete hidden" id="download-complete">
+                    <h2>✅ All Downloads Complete!</h2>
+                    <p>Your bird call recordings have been successfully downloaded.</p>
+                    <div class="form-actions">
+                        <button class="btn primary" id="new-download-btn">Start New Download</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>

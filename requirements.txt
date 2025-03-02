@@ -1,0 +1,9 @@
+# Core dependencies
+requests>=2.32.0
+beautifulsoup4>=4.12.0
+tqdm>=4.66.0  # For command line progress bars
+
+# Flask web interface
+flask>=2.0.1
+
+pathlib>=1.0.0
