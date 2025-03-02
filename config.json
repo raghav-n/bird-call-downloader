@@ -1,0 +1,23 @@
+{
+  "download_dir": "~/Downloads/BirdCalls",
+  "overwrite": false,
+  "verbosity": "warning",
+  "xeno": {
+    "location": null,
+    "country": "malaysia",
+    "max_per_species": 5,
+    "better_than_rating": "C",
+    "min_length_seconds": null,
+    "max_length_seconds": 300
+  },
+  "ebird": {
+    "api_key": "ebird_api_key",
+    "region_code": "MY-06",
+    "backup_region_codes": [
+      "SG",
+      "MY",
+      "TH"
+    ],
+    "max_per_species": 5
+  }
+}
