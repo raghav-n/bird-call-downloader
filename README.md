@@ -8,7 +8,7 @@ This tool automatically downloads bird call recordings from Xeno-Canto and eBird
 
 The recordings downloaded using this tool remain the intellectual property of their original creators and are subject to the terms and conditions set by:
 - [Xeno-Canto's licensing terms](https://xeno-canto.org/about/terms)
-- [Macaulay Library/eBird's media licensing](https://www.macaulaylibrary.org/about/media-use-and-license-agreement/)
+- [Macaulay Library/eBird's media licensing](https://www.birds.cornell.edu/home/terms-of-use/)
 
 **Users must:**
 - Properly attribute recordings to their original recordists
