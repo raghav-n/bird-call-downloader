@@ -150,7 +150,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Track if we should keep checking progress
     let continueChecking = false;
-    
+    // Add this to track the last request time
+    let lastProgressRequestTime = 0;
+
     // Function to check download progress
     function checkProgress() {
         continueChecking = true;
@@ -158,33 +160,45 @@ document.addEventListener('DOMContentLoaded', function() {
         function checkUpdate() {
             if (!continueChecking) return;
             
-            fetch('/progress')
-                .then(response => response.json())
-                .then(data => {
-                    // Update progress bars
-                    updateProgressBar('xeno', data.xeno);
-                    updateProgressBar('ebird', data.ebird);
-                    
-                    // Update status message
-                    document.getElementById('status-message').textContent = data.status;
-                    
-                    // Check if download is complete
-                    if (data.xeno_complete && data.ebird_complete) {
-                        document.getElementById('download-complete').classList.remove('hidden');
-                        continueChecking = false;
-                    }
-                    
-                    // If download is still running, check again in 1 second
-                    if (data.download_running && continueChecking) {
-                        setTimeout(checkUpdate, 1000);
-                    }
-                })
-                .catch(error => {
-                    console.error('Error checking progress:', error);
-                    if (continueChecking) {
-                        setTimeout(checkUpdate, 5000);  // Retry after 5 seconds if error
-                    }
-                });
+            // Get current time
+            const now = Date.now();
+            // Only make a request if it's been more than 1000ms (1 second) since the last one
+            if (now - lastProgressRequestTime >= 1000) {
+                // Update the timestamp before making the request
+                lastProgressRequestTime = now;
+                
+                fetch('/progress')
+                    .then(response => response.json())
+                    .then(data => {
+                        // Update progress bars
+                        updateProgressBar('xeno', data.xeno);
+                        updateProgressBar('ebird', data.ebird);
+                        
+                        // Update status message
+                        document.getElementById('status-message').textContent = data.status;
+                        
+                        // Check if download is complete
+                        if (data.xeno_complete && data.ebird_complete) {
+                            document.getElementById('download-complete').classList.remove('hidden');
+                            continueChecking = false;
+                        }
+                        
+                        // If download is still running, check again in 1 second
+                        if (data.download_running && continueChecking) {
+                            setTimeout(checkUpdate, 1000);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error checking progress:', error);
+                        if (continueChecking) {
+                            setTimeout(checkUpdate, 5000);  // Retry after 5 seconds if error
+                        }
+                    });
+            } else {
+                // If it's too soon, wait until we hit the 1-second mark since the last request
+                const waitTime = 1000 - (now - lastProgressRequestTime);
+                setTimeout(checkUpdate, waitTime);
+            }
         }
         
         // Start checking
@@ -193,7 +207,12 @@ document.addEventListener('DOMContentLoaded', function() {
         // Handle page visibility changes
         document.addEventListener('visibilitychange', function() {
             if (document.visibilityState === 'visible' && continueChecking) {
-                checkUpdate();
+                // Don't call checkUpdate directly; instead reset the timer
+                // This prevents a flood of requests when tab gets focus
+                const now = Date.now();
+                if (now - lastProgressRequestTime >= 1000) {
+                    checkUpdate();
+                }
             }
         });
     }

@@ -15,7 +15,13 @@ from birdcall_core.config import load_config, save_config, get_log_level
 from birdcall_core.downloader import run_xeno_download, run_ebird_download
 from birdcall_core.utils import setup_logger
 
+# Silence Werkzeug logs
+log = logging.getLogger('werkzeug')
+log.setLevel(logging.ERROR)  # Only show errors, not requests
+
+# Disable Flask's internal log handler
 app = Flask(__name__)
+app.logger.disabled = True
 
 # Set up base directories
 BASE_DIR = Path(os.path.dirname(os.path.abspath(__file__))).parent
