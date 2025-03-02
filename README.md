@@ -2,6 +2,25 @@
 
 This tool automatically downloads bird call recordings from Xeno-Canto and eBird/Macaulay Library based on your configuration.
 
+## ⚠️ Important Notice
+
+**This software is intended for personal, educational, and research use only.**
+
+The recordings downloaded using this tool remain the intellectual property of their original creators and are subject to the terms and conditions set by:
+- [Xeno-Canto's licensing terms](https://xeno-canto.org/about/terms)
+- [Macaulay Library/eBird's media licensing](https://www.macaulaylibrary.org/about/media-use-and-license-agreement/)
+
+**Users must:**
+- Properly attribute recordings to their original recordists
+- Respect the licensing of each individual recording
+- NOT use recordings for commercial purposes without explicit permission
+- NOT redistribute large collections of recordings
+- Comply with all terms of service of both platforms
+
+**I am not responsible for any misuse of this tool or the downloaded recordings, including plagiarism, copyright infringement, or usage without proper consent from Xeno-Canto, eBird/Macaulay Library, or the individual recordists.**
+
+By using this software, you acknowledge that you are solely responsible for ensuring your usage complies with all applicable policies and laws.
+
 ## Project Structure
 
 ```
