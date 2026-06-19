@@ -39,6 +39,10 @@
                         </div>
                     </div>
                     <div class="section-content" id="xeno-settings">
+                        <div class="form-group">
+                            <label for="xeno_api_key">Xeno-Canto API Key</label>
+                            <input type="text" id="xeno_api_key" name="xeno_api_key" value="{{ config.xeno.api_key or '' }}">
+                        </div>
                         <p class="note">At least one of Country or Location must be specified</p>
                         <div class="form-row">
                             <div class="form-group half">
