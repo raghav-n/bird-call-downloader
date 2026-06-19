@@ -112,6 +112,7 @@ def start_download():
             "overwrite": False,  # Always false
             "verbosity": "warning",  # Fixed at warning
             "xeno": {
+                "api_key": form_data.get('xeno_api_key', ''),
                 "location": form_data.get('xeno_location', '') or None,
                 "country": form_data.get('xeno_country', ''),
                 "max_per_species": int(xeno_max_per_species),
@@ -128,6 +129,12 @@ def start_download():
         }
             
         # Validate Xeno-Canto settings
+        if xeno_enabled and not config["xeno"]["api_key"]:
+            return jsonify({
+                "status": "error",
+                "message": "Xeno-Canto API key is required for Xeno-Canto downloads."
+            })
+
         if xeno_enabled and not config["xeno"]["country"] and not config["xeno"]["location"]:
             return jsonify({
                 "status": "error", 

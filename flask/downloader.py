@@ -60,7 +60,7 @@ def download_file(save_loc, file_name, download_url, overwrite=False):
 
 def run_xeno_threaded(config, progress_callback):
     """Download recordings from Xeno-Canto with progress updates"""
-    download_dir = Path(config["download_dir"])
+    download_dir = Path(config["download_dir"]).expanduser()
     download_dir_xc = download_dir / "XC"
     overwrite = config["overwrite"]
     
@@ -166,7 +166,7 @@ def run_xeno_threaded(config, progress_callback):
 
 def run_ebird_threaded(config, progress_callback):
     """Download recordings from eBird/ML with progress updates"""
-    download_dir = Path(config["download_dir"])
+    download_dir = Path(config["download_dir"]).expanduser()
     download_dir_ml = download_dir / "ML"
     overwrite = config["overwrite"]
     
