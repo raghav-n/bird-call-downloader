@@ -25,11 +25,12 @@ def run_xeno_download(config, progress_callback=None):
     if progress_callback is None:
         progress_callback = lambda x: None  # No-op function
         
-    download_dir = Path(config["download_dir"])
+    download_dir = Path(config["download_dir"]).expanduser()
     download_dir_xc = download_dir / "XC"
     overwrite = config["overwrite"]
     
     # Extract Xeno-Canto settings
+    xeno_api_key = config["xeno"]["api_key"]
     xeno_location = config["xeno"]["location"]
     xeno_country = config["xeno"]["country"]
     xeno_better_than = config["xeno"]["better_than_rating"]
@@ -45,11 +46,16 @@ def run_xeno_download(config, progress_callback=None):
             logging.error("Either country or location must be specified for Xeno-Canto downloads.")
             progress_callback(1.0)
             return 0
-        
+
+        if not xeno_api_key:
+            logging.error("Xeno-Canto API key is required.")
+            progress_callback(1.0)
+            return 0
+
         # Prepare API query
-        base_url = "https://xeno-canto.org/api/2/recordings"
+        base_url = "https://xeno-canto.org/api/3/recordings"
         query_params = ["grp:\"birds\""]
-        
+
         if xeno_location:
             query_params.append(f"loc:{xeno_location}")
         if xeno_country:
@@ -60,29 +66,29 @@ def run_xeno_download(config, progress_callback=None):
             query_params.append(f"len_gt:{xeno_min_length}")
         if xeno_max_length:
             query_params.append(f"len_lt:{xeno_max_length}")
-        
+
         # Make initial request to get page count
         logging.info(f"Fetching Xeno-Canto data with params {query_params}...")
-        response = requests.get(f"{base_url}?query={'+'.join(query_params)}", timeout=30)
+        response = requests.get(f"{base_url}?query={'+'.join(query_params)}&key={xeno_api_key}", timeout=30)
         data = response.json()
-        
+
         num_pages = data.get("numPages", 0)
         logging.info(f"Found {num_pages} pages of Xeno-Canto data")
-        
+
         if num_pages == 0:
             logging.warning("No recordings found on Xeno-Canto")
             progress_callback(1.0)
             return 0
 
         all_recordings = []
-        
+
         # Fetch all pages
         for idx in range(num_pages):
             progress_percent = (idx / max(1, num_pages)) * 0.1
             progress_callback(progress_percent)
             logging.info(f"Loading Xeno-Canto recordings page {idx+1}/{num_pages}...")
-            
-            rec_response = requests.get(f"{base_url}?query={'+'.join(query_params)}&page={idx + 1}", timeout=30)
+
+            rec_response = requests.get(f"{base_url}?query={'+'.join(query_params)}&key={xeno_api_key}&page={idx + 1}", timeout=30)
             rec_data = rec_response.json()
             all_recordings += rec_data["recordings"]
         
@@ -149,7 +155,7 @@ def run_ebird_download(config, progress_callback=None):
     if progress_callback is None:
         progress_callback = lambda x: None  # No-op function
     
-    download_dir = Path(config["download_dir"])
+    download_dir = Path(config["download_dir"]).expanduser()
     download_dir_ml = download_dir / "ML"
     overwrite = config["overwrite"]
     download_count = 0

@@ -34,6 +34,7 @@ def load_config():
             "overwrite": False,
             "verbosity": "warning",
             "xeno": {
+                "api_key": "",
                 "location": None,
                 "country": "",
                 "max_per_species": 3,

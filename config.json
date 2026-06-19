@@ -1,23 +1,20 @@
 {
-  "download_dir": "~/Downloads/BirdCalls",
+  "download_dir": "~/Downloads/KinabaluCalls",
   "overwrite": false,
   "verbosity": "warning",
   "xeno": {
+    "api_key": "",
     "location": null,
-    "country": "malaysia",
-    "max_per_species": 5,
-    "better_than_rating": "C",
+    "country": "",
+    "max_per_species": 3,
+    "better_than_rating": null,
     "min_length_seconds": null,
-    "max_length_seconds": 300
+    "max_length_seconds": null
   },
   "ebird": {
-    "api_key": "ebird_api_key",
-    "region_code": "MY-06",
-    "backup_region_codes": [
-      "SG",
-      "MY",
-      "TH"
-    ],
-    "max_per_species": 5
+    "api_key": "vjs0lkugqgdj",
+    "region_code": "MY-12",
+    "backup_region_codes": [],
+    "max_per_species": 4
   }
 }
