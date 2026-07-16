@@ -10,25 +10,30 @@ from pathlib import Path
 from bs4 import BeautifulSoup
 from .utils import sanitize_filename, download_file
 
-def run_xeno_download(config, progress_callback=None):
+def collect_xeno_downloads(config, progress_callback=None):
     """
-    Download recordings from Xeno-Canto.
-    
+    Query Xeno-Canto and build the list of recordings that would be downloaded,
+    WITHOUT downloading anything.
+
     Args:
         config (dict): Configuration dictionary
-        progress_callback (callable, optional): Function to call with progress updates (0.0-1.0)
-    
+        progress_callback (callable, optional): Function to call with progress updates.
+            Used by the download path for the metadata-fetch phase (0.0-0.1).
+
     Returns:
-        int: Number of files downloaded
+        tuple: (download_args_list, species_count) where download_args_list is a list of
+            [save_dir, file_name, download_url] entries and species_count is the number of
+            distinct species with at least one recording to download.
+
+    Raises:
+        ValueError: If required search parameters or the API key are missing.
     """
-    # Set up default progress callback if none provided
     if progress_callback is None:
         progress_callback = lambda x: None  # No-op function
-        
+
     download_dir = Path(config["download_dir"]).expanduser()
     download_dir_xc = download_dir / "XC"
-    overwrite = config["overwrite"]
-    
+
     # Extract Xeno-Canto settings
     xeno_api_key = config["xeno"]["api_key"]
     xeno_location = config["xeno"]["location"]
@@ -37,86 +42,117 @@ def run_xeno_download(config, progress_callback=None):
     xeno_min_length = config["xeno"]["min_length_seconds"]
     xeno_max_length = config["xeno"]["max_length_seconds"]
     max_per_species = config["xeno"]["max_per_species"]
-    
+
+    # Ensure at least one search parameter is specified
+    if not xeno_country and not xeno_location:
+        raise ValueError("Either country or location must be specified for Xeno-Canto downloads.")
+
+    if not xeno_api_key:
+        raise ValueError("Xeno-Canto API key is required.")
+
+    # Prepare API query
+    base_url = "https://xeno-canto.org/api/3/recordings"
+    query_params = ["grp:\"birds\""]
+
+    if xeno_location:
+        query_params.append(f"loc:{xeno_location}")
+    if xeno_country:
+        query_params.append(f"cnt:{xeno_country}")
+    if xeno_better_than:
+        query_params.append(f"q:\">{xeno_better_than}\"")
+    if xeno_min_length:
+        query_params.append(f"len_gt:{xeno_min_length}")
+    if xeno_max_length:
+        query_params.append(f"len_lt:{xeno_max_length}")
+
+    # Make initial request to get page count
+    logging.info(f"Fetching Xeno-Canto data with params {query_params}...")
+    response = requests.get(f"{base_url}?query={'+'.join(query_params)}&key={xeno_api_key}", timeout=30)
+    data = response.json()
+
+    num_pages = data.get("numPages", 0)
+    logging.info(f"Found {num_pages} pages of Xeno-Canto data")
+
+    if num_pages == 0:
+        logging.warning("No recordings found on Xeno-Canto")
+        return [], 0
+
+    all_recordings = []
+
+    # Fetch all pages
+    for idx in range(num_pages):
+        progress_percent = (idx / max(1, num_pages)) * 0.1
+        progress_callback(progress_percent)
+        logging.info(f"Loading Xeno-Canto recordings page {idx+1}/{num_pages}...")
+
+        rec_response = requests.get(f"{base_url}?query={'+'.join(query_params)}&key={xeno_api_key}&page={idx + 1}", timeout=30)
+        rec_data = rec_response.json()
+        all_recordings += rec_data["recordings"]
+
+    # Group recordings by species
+    logging.info("Processing recordings by species...")
+    recordings_by_species = {}
+    for rec in all_recordings:
+        species = rec["en"]
+        if species not in recordings_by_species:
+            recordings_by_species[species] = []
+        recordings_by_species[species].append(rec)
+
+    # Sort each species' recordings by quality (A is highest, E is lowest)
+    for species, recordings in recordings_by_species.items():
+        recordings.sort(key=lambda x: 'ABCDE'.index(x['q'][0]) if x['q'] and x['q'][0] in 'ABCDE' else 999)
+
+    # Limit each species to max_per_species recordings
+    filtered_recordings = []
+    for species, recordings in recordings_by_species.items():
+        filtered_recordings.extend(recordings[:max_per_species])
+
+    download_args_list = [
+        [Path(download_dir_xc / sanitize_filename(rec["en"])),
+        f"({rec['q']}) {rec['en']}; {rec['loc']}; {rec['rec']}; XC{rec['id']}.mp3",
+        rec["file"]]
+        for rec in filtered_recordings if rec["file"] and rec["en"]
+    ]
+
+    # Count distinct species that actually contribute at least one downloadable recording
+    species_count = len({rec["en"] for rec in filtered_recordings if rec["file"] and rec["en"]})
+
+    return download_args_list, species_count
+
+
+def preview_xeno_download(config):
+    """
+    Compute how many species and recordings would be downloaded from Xeno-Canto,
+    without downloading any files.
+
+    Returns:
+        dict: {"species": int, "calls": int, "exact": True}
+    """
+    download_args_list, species_count = collect_xeno_downloads(config)
+    return {"species": species_count, "calls": len(download_args_list), "exact": True}
+
+
+def run_xeno_download(config, progress_callback=None):
+    """
+    Download recordings from Xeno-Canto.
+
+    Args:
+        config (dict): Configuration dictionary
+        progress_callback (callable, optional): Function to call with progress updates (0.0-1.0)
+
+    Returns:
+        int: Number of files downloaded
+    """
+    # Set up default progress callback if none provided
+    if progress_callback is None:
+        progress_callback = lambda x: None  # No-op function
+
+    overwrite = config["overwrite"]
     download_count = 0
-    
+
     try:
-        # Ensure at least one search parameter is specified
-        if not xeno_country and not xeno_location:
-            logging.error("Either country or location must be specified for Xeno-Canto downloads.")
-            progress_callback(1.0)
-            return 0
+        download_args_list, _ = collect_xeno_downloads(config, progress_callback)
 
-        if not xeno_api_key:
-            logging.error("Xeno-Canto API key is required.")
-            progress_callback(1.0)
-            return 0
-
-        # Prepare API query
-        base_url = "https://xeno-canto.org/api/3/recordings"
-        query_params = ["grp:\"birds\""]
-
-        if xeno_location:
-            query_params.append(f"loc:{xeno_location}")
-        if xeno_country:
-            query_params.append(f"cnt:{xeno_country}")
-        if xeno_better_than:
-            query_params.append(f"q:\">{xeno_better_than}\"")
-        if xeno_min_length:
-            query_params.append(f"len_gt:{xeno_min_length}")
-        if xeno_max_length:
-            query_params.append(f"len_lt:{xeno_max_length}")
-
-        # Make initial request to get page count
-        logging.info(f"Fetching Xeno-Canto data with params {query_params}...")
-        response = requests.get(f"{base_url}?query={'+'.join(query_params)}&key={xeno_api_key}", timeout=30)
-        data = response.json()
-
-        num_pages = data.get("numPages", 0)
-        logging.info(f"Found {num_pages} pages of Xeno-Canto data")
-
-        if num_pages == 0:
-            logging.warning("No recordings found on Xeno-Canto")
-            progress_callback(1.0)
-            return 0
-
-        all_recordings = []
-
-        # Fetch all pages
-        for idx in range(num_pages):
-            progress_percent = (idx / max(1, num_pages)) * 0.1
-            progress_callback(progress_percent)
-            logging.info(f"Loading Xeno-Canto recordings page {idx+1}/{num_pages}...")
-
-            rec_response = requests.get(f"{base_url}?query={'+'.join(query_params)}&key={xeno_api_key}&page={idx + 1}", timeout=30)
-            rec_data = rec_response.json()
-            all_recordings += rec_data["recordings"]
-        
-        # Group recordings by species
-        logging.info("Processing recordings by species...")
-        recordings_by_species = {}
-        for rec in all_recordings:
-            species = rec["en"]
-            if species not in recordings_by_species:
-                recordings_by_species[species] = []
-            recordings_by_species[species].append(rec)
-        
-        # Sort each species' recordings by quality (A is highest, E is lowest)
-        for species, recordings in recordings_by_species.items():
-            recordings.sort(key=lambda x: 'ABCDE'.index(x['q'][0]) if x['q'] and x['q'][0] in 'ABCDE' else 999)
-        
-        # Limit each species to max_per_species recordings
-        filtered_recordings = []
-        for species, recordings in recordings_by_species.items():
-            filtered_recordings.extend(recordings[:max_per_species])
-        
-        download_args_list = [
-            [Path(download_dir_xc / sanitize_filename(rec["en"])), 
-            f"({rec['q']}) {rec['en']}; {rec['loc']}; {rec['rec']}; XC{rec['id']}.mp3",
-            rec["file"]]
-            for rec in filtered_recordings if rec["file"] and rec["en"]
-        ]
-        
         # Download files with progress updates
         num_downloads = len(download_args_list)
         logging.info(f"Downloading {num_downloads} Xeno-Canto recordings...")
@@ -274,3 +310,46 @@ def run_ebird_download(config, progress_callback=None):
         logging.error(f"Error in eBird download: {str(e)}")
         progress_callback(1.0)
         return download_count
+
+
+def preview_ebird_download(config):
+    """
+    Estimate how many species and (at most) how many recordings would be downloaded
+    from eBird/Macaulay Library, without downloading any files.
+
+    Getting the exact recording count requires scraping the Macaulay Library catalog for
+    every species (potentially hundreds of requests), which is too slow for a preview.
+    Instead this returns the exact species count for the region and an UPPER BOUND on the
+    number of recordings (species x max_per_species); fewer may download if a species has
+    fewer recordings available.
+
+    Returns:
+        dict: {"species": int, "max_calls": int, "exact": False}
+
+    Raises:
+        ValueError: If the API key or region code is missing.
+        RuntimeError: If the species list cannot be retrieved.
+    """
+    api_key = config["ebird"]["api_key"]
+    region_code = config["ebird"]["region_code"]
+    max_per_species = config["ebird"]["max_per_species"]
+
+    if not api_key:
+        raise ValueError("eBird API key is required for Macaulay Library downloads.")
+    if not region_code:
+        raise ValueError("eBird region code is required for Macaulay Library downloads.")
+
+    logging.info(f"Fetching species list for region {region_code} (preview)...")
+    base_url_sp_list = f"https://api.ebird.org/v2/product/spplist/{region_code}"
+    response_sp_list = requests.get(f"{base_url_sp_list}?key={api_key}", timeout=30)
+
+    try:
+        ebird_taxon_codes = response_sp_list.json()
+    except json.JSONDecodeError:
+        raise RuntimeError("Failed to get species list. Check your API key and region code.")
+
+    if not isinstance(ebird_taxon_codes, list):
+        raise RuntimeError("Failed to get species list. Check your API key and region code.")
+
+    species_count = len(ebird_taxon_codes)
+    return {"species": species_count, "max_calls": species_count * max_per_species, "exact": False}

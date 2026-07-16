@@ -12,7 +12,12 @@ sys.path.append(str(Path(os.path.dirname(os.path.abspath(__file__))).parent))
 
 # Import from core module
 from birdcall_core.config import load_config, save_config, get_log_level
-from birdcall_core.downloader import run_xeno_download, run_ebird_download
+from birdcall_core.downloader import (
+    run_xeno_download,
+    run_ebird_download,
+    preview_xeno_download,
+    preview_ebird_download,
+)
 from birdcall_core.utils import setup_logger
 
 # Silence Werkzeug logs
@@ -67,6 +72,108 @@ def update_ebird_progress(progress_value):
         progress['ebird_complete'] = True
         logger.info("eBird download complete")
 
+def build_config_from_form(form_data):
+    """Convert submitted form data into a config dict with proper types."""
+    xeno_min_length = form_data.get('xeno_min_length', '')
+    xeno_max_length = form_data.get('xeno_max_length', '')
+    xeno_better_than = form_data.get('xeno_better_than', '')
+    xeno_max_per_species = form_data.get('xeno_max_per_species', '3')
+    ebird_max_per_species = form_data.get('ebird_max_per_species', '3')
+
+    # Type conversions
+    xeno_min_length = int(xeno_min_length) if xeno_min_length and int(xeno_min_length) > 0 else None
+    xeno_max_length = int(xeno_max_length) if xeno_max_length and int(xeno_max_length) > 0 else None
+    xeno_better_than = xeno_better_than if xeno_better_than != "" else None
+    backup_regions = [r.strip() for r in form_data.get('backup_regions', '').split(',') if r.strip()]
+
+    return {
+        "download_dir": form_data.get('download_dir', str(Path.home() / "Downloads" / "BirdCalls")),
+        "overwrite": False,  # Always false
+        "verbosity": "warning",  # Fixed at warning
+        "xeno": {
+            "api_key": form_data.get('xeno_api_key', ''),
+            "location": form_data.get('xeno_location', '') or None,
+            "country": form_data.get('xeno_country', ''),
+            "max_per_species": int(xeno_max_per_species),
+            "better_than_rating": xeno_better_than,
+            "min_length_seconds": xeno_min_length,
+            "max_length_seconds": xeno_max_length
+        },
+        "ebird": {
+            "api_key": form_data.get('ebird_api_key', ''),
+            "region_code": form_data.get('ebird_region', ''),
+            "backup_region_codes": backup_regions,
+            "max_per_species": int(ebird_max_per_species)
+        }
+    }
+
+
+def validate_sources(config, xeno_enabled, ebird_enabled):
+    """Validate enabled sources. Returns an error message string, or None if valid."""
+    if not xeno_enabled and not ebird_enabled:
+        return "Please enable at least one download source (Xeno-Canto or eBird)."
+
+    if xeno_enabled:
+        if not config["xeno"]["api_key"]:
+            return "Xeno-Canto API key is required for Xeno-Canto downloads."
+        if not config["xeno"]["country"] and not config["xeno"]["location"]:
+            return "For Xeno-Canto downloads, either Country or Location must be specified."
+
+    if ebird_enabled:
+        if not config["ebird"]["api_key"]:
+            return "eBird API key is required for eBird/Macaulay Library downloads."
+        if not config["ebird"]["region_code"]:
+            return "Region code is required for eBird/Macaulay Library downloads."
+
+    return None
+
+
+@app.route('/preview', methods=['POST'])
+def preview_download():
+    """Compute how many species/recordings would be downloaded, without downloading."""
+    try:
+        form_data = request.form
+        xeno_enabled = form_data.get('xeno_enabled') == 'on'
+        ebird_enabled = form_data.get('ebird_enabled') == 'on'
+
+        config = build_config_from_form(form_data)
+
+        error = validate_sources(config, xeno_enabled, ebird_enabled)
+        if error:
+            return jsonify({"status": "error", "message": error})
+
+        result = {"status": "success", "xeno": None, "ebird": None}
+
+        if xeno_enabled:
+            try:
+                result["xeno"] = preview_xeno_download(config)
+            except Exception as e:
+                logger.error(f"Error previewing Xeno-Canto: {str(e)}")
+                return jsonify({
+                    "status": "error",
+                    "message": f"Could not preview Xeno-Canto: {str(e)}"
+                })
+
+        if ebird_enabled:
+            try:
+                result["ebird"] = preview_ebird_download(config)
+            except Exception as e:
+                logger.error(f"Error previewing eBird: {str(e)}")
+                return jsonify({
+                    "status": "error",
+                    "message": f"Could not preview eBird: {str(e)}"
+                })
+
+        return jsonify(result)
+
+    except Exception as e:
+        logger.error(f"Error building preview: {str(e)}")
+        return jsonify({
+            "status": "error",
+            "message": f"Failed to build preview: {str(e)}"
+        })
+
+
 @app.route('/start_download', methods=['POST'])
 def start_download():
     """Update config.json and start the download process"""
@@ -78,83 +185,22 @@ def start_download():
         progress['ebird_complete'] = False
         progress['download_running'] = True
         progress['status'] = 'Starting downloads...'
-        
+
         # Get form data
         form_data = request.form
-        
+
         # Get enabled download sources
         xeno_enabled = form_data.get('xeno_enabled') == 'on'
         ebird_enabled = form_data.get('ebird_enabled') == 'on'
-        
-        if not xeno_enabled and not ebird_enabled:
-            return jsonify({
-                "status": "error", 
-                "message": "Please enable at least one download source (Xeno-Canto or eBird)."
-            })
-        
-        # Process form data into config structure
-        # Convert values with proper type handling
-        xeno_min_length = form_data.get('xeno_min_length', '')
-        xeno_max_length = form_data.get('xeno_max_length', '')
-        xeno_better_than = form_data.get('xeno_better_than', '')
-        xeno_max_per_species = form_data.get('xeno_max_per_species', '3')
-        ebird_max_per_species = form_data.get('ebird_max_per_species', '3')
-        
-        # Type conversions
-        xeno_min_length = int(xeno_min_length) if xeno_min_length and int(xeno_min_length) > 0 else None
-        xeno_max_length = int(xeno_max_length) if xeno_max_length and int(xeno_max_length) > 0 else None
-        xeno_better_than = xeno_better_than if xeno_better_than != "" else None
-        backup_regions = [r.strip() for r in form_data.get('backup_regions', '').split(',') if r.strip()]
-        
-        # Create new config object
-        config = {
-            "download_dir": form_data.get('download_dir', str(Path.home() / "Downloads" / "BirdCalls")),
-            "overwrite": False,  # Always false
-            "verbosity": "warning",  # Fixed at warning
-            "xeno": {
-                "api_key": form_data.get('xeno_api_key', ''),
-                "location": form_data.get('xeno_location', '') or None,
-                "country": form_data.get('xeno_country', ''),
-                "max_per_species": int(xeno_max_per_species),
-                "better_than_rating": xeno_better_than,
-                "min_length_seconds": xeno_min_length,
-                "max_length_seconds": xeno_max_length
-            },
-            "ebird": {
-                "api_key": form_data.get('ebird_api_key', ''),
-                "region_code": form_data.get('ebird_region', ''),
-                "backup_region_codes": backup_regions,
-                "max_per_species": int(ebird_max_per_species)
-            }
-        }
-            
-        # Validate Xeno-Canto settings
-        if xeno_enabled and not config["xeno"]["api_key"]:
-            return jsonify({
-                "status": "error",
-                "message": "Xeno-Canto API key is required for Xeno-Canto downloads."
-            })
 
-        if xeno_enabled and not config["xeno"]["country"] and not config["xeno"]["location"]:
-            return jsonify({
-                "status": "error", 
-                "message": "For Xeno-Canto downloads, either Country or Location must be specified."
-            })
-            
-        # Validate eBird settings
-        if ebird_enabled:
-            if not config["ebird"]["api_key"]:
-                return jsonify({
-                    "status": "error", 
-                    "message": "eBird API key is required for eBird/Macaulay Library downloads."
-                })
-                
-            if not config["ebird"]["region_code"]:
-                return jsonify({
-                    "status": "error", 
-                    "message": "Region code is required for eBird/Macaulay Library downloads."
-                })
-        
+        # Build and validate config from submitted form
+        config = build_config_from_form(form_data)
+
+        error = validate_sources(config, xeno_enabled, ebird_enabled)
+        if error:
+            progress['download_running'] = False
+            return jsonify({"status": "error", "message": error})
+
         # Save the new config to config.json
         if not save_config(config):
             return jsonify({

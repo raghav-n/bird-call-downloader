@@ -119,15 +119,30 @@
                     </div>
                 </div>
                 
-                <!-- Start Download Button -->
+                <!-- Preview Download Button -->
                 <div class="form-actions">
-                    <button type="submit" class="btn primary" id="download-btn">Start Downloads</button>
+                    <button type="submit" class="btn primary" id="download-btn">Preview Download</button>
                 </div>
             </form>
-            
+
             <div id="message" class="message hidden"></div>
         </div>
-        
+
+        <!-- Preview Section (initially hidden) -->
+        <div id="preview-section" class="hidden">
+            <h2>Download Preview</h2>
+            <p>Here's what will be downloaded. Review the numbers, then confirm to start.</p>
+
+            <div class="preview-cards" id="preview-cards"></div>
+
+            <div class="preview-note" id="preview-note"></div>
+
+            <div class="form-actions preview-actions">
+                <button type="button" class="btn" id="preview-back-btn">← Back to settings</button>
+                <button type="button" class="btn primary" id="confirm-download-btn">Confirm &amp; Download</button>
+            </div>
+        </div>
+
         <!-- Progress Section (initially hidden) -->
         <div id="progress-section" class="hidden">
             <h2>Download Progress</h2>

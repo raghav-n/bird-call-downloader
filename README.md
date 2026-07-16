@@ -68,6 +68,15 @@ source .venv/bin/activate
 python3 -m pip install -r requirements.txt
 ```
 
+3. Create your local configuration from the template:
+
+```bash
+# Copy the example config, then fill in your API keys
+cp config.example.json config.json
+```
+
+`config.json` holds your API keys and is git-ignored, so it stays local and is never committed.
+
 ## Usage
 
 ### Flask Web Interface (recommended)

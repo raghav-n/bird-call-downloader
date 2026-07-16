@@ -76,58 +76,147 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
-    // Download form submission
+    // Download form submission -> preview first, then confirm to download
     const downloadForm = document.getElementById('download-form');
+    const previewSection = document.getElementById('preview-section');
     const progressSection = document.getElementById('progress-section');
     const messageDiv = document.getElementById('message');
-    
+    const previewCards = document.getElementById('preview-cards');
+    const previewNote = document.getElementById('preview-note');
+    const confirmDownloadBtn = document.getElementById('confirm-download-btn');
+    const previewBackBtn = document.getElementById('preview-back-btn');
+
+    // Form data captured at preview time and reused when the user confirms
+    let pendingFormData = null;
+
+    function showError(message) {
+        messageDiv.textContent = message;
+        messageDiv.classList.remove('hidden', 'success');
+        messageDiv.classList.add('error');
+    }
+
+    function buildPreviewCard(title, rows, note) {
+        const rowsHtml = rows.map(r =>
+            `<div class="preview-stat"><span class="preview-value">${r.value}</span>` +
+            `<span class="preview-label">${r.label}</span></div>`
+        ).join('');
+        const noteHtml = note ? `<p class="preview-card-note">${note}</p>` : '';
+        return `<div class="preview-card"><h3>${title}</h3>` +
+            `<div class="preview-stats">${rowsHtml}</div>${noteHtml}</div>`;
+    }
+
+    function renderPreview(data) {
+        const cards = [];
+        let totalMin = 0;   // recordings we can count exactly
+        let totalMax = 0;   // upper bound including estimates
+        let hasEstimate = false;
+
+        if (data.xeno) {
+            cards.push(buildPreviewCard('🎧 Xeno-Canto', [
+                { value: data.xeno.species, label: 'species' },
+                { value: data.xeno.calls, label: 'recordings' }
+            ], 'Exact count based on matching recordings.'));
+            totalMin += data.xeno.calls;
+            totalMax += data.xeno.calls;
+        }
+
+        if (data.ebird) {
+            hasEstimate = true;
+            cards.push(buildPreviewCard('🐦 eBird / Macaulay Library', [
+                { value: data.ebird.species, label: 'species' },
+                { value: 'up to ' + data.ebird.max_calls, label: 'recordings' }
+            ], 'Upper bound (species × max per species). Actual count may be lower if some species have fewer recordings.'));
+            totalMax += data.ebird.max_calls;
+        }
+
+        previewCards.innerHTML = cards.join('');
+
+        const totalText = hasEstimate
+            ? `Total: up to <strong>${totalMax}</strong> recordings will be downloaded.`
+            : `Total: <strong>${totalMax}</strong> recordings will be downloaded.`;
+        previewNote.innerHTML = totalText;
+    }
+
     if (downloadForm) {
         downloadForm.addEventListener('submit', function(e) {
             e.preventDefault();
-            
+
             const downloadBtn = document.getElementById('download-btn');
-            
-            // Disable button to prevent multiple submissions
             downloadBtn.disabled = true;
-            downloadBtn.textContent = 'Starting...';
-            
-            // Get form data
-            const formData = new FormData(this);
-            
-            // Send AJAX request
+            downloadBtn.textContent = 'Calculating preview…';
+            messageDiv.classList.add('hidden');
+
+            // Capture form data now; reuse it when the user confirms
+            pendingFormData = new FormData(this);
+
+            fetch('/preview', {
+                method: 'POST',
+                body: pendingFormData
+            })
+            .then(response => response.json())
+            .then(data => {
+                downloadBtn.disabled = false;
+                downloadBtn.textContent = 'Preview Download';
+
+                if (data.status === 'success') {
+                    renderPreview(data);
+                    downloadForm.style.display = 'none';
+                    messageDiv.classList.add('hidden');
+                    previewSection.classList.remove('hidden');
+                } else {
+                    showError(data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error building preview:', error);
+                downloadBtn.disabled = false;
+                downloadBtn.textContent = 'Preview Download';
+                showError('An error occurred while building the preview.');
+            });
+        });
+    }
+
+    // Back to settings from the preview
+    if (previewBackBtn) {
+        previewBackBtn.addEventListener('click', function() {
+            previewSection.classList.add('hidden');
+            downloadForm.style.display = 'block';
+            pendingFormData = null;
+        });
+    }
+
+    // Confirm the preview and actually start downloading
+    if (confirmDownloadBtn) {
+        confirmDownloadBtn.addEventListener('click', function() {
+            if (!pendingFormData) {
+                showError('Preview expired. Please preview again.');
+                return;
+            }
+
+            confirmDownloadBtn.disabled = true;
+            confirmDownloadBtn.textContent = 'Starting…';
+
             fetch('/start_download', {
                 method: 'POST',
-                body: formData
+                body: pendingFormData
             })
             .then(response => response.json())
             .then(data => {
                 if (data.status === 'success') {
-                    // Show progress section
-                    downloadForm.style.display = 'none';
+                    previewSection.classList.add('hidden');
                     progressSection.classList.remove('hidden');
-                    
-                    // Start checking progress
                     checkProgress();
                 } else {
-                    // Show error message
-                    messageDiv.textContent = data.message;
-                    messageDiv.classList.remove('hidden', 'success');
-                    messageDiv.classList.add('error');
-                    
-                    // Re-enable button
-                    downloadBtn.disabled = false;
-                    downloadBtn.textContent = 'Start Downloads';
+                    showError(data.message);
+                    confirmDownloadBtn.disabled = false;
+                    confirmDownloadBtn.textContent = 'Confirm & Download';
                 }
             })
             .catch(error => {
                 console.error('Error starting download:', error);
-                messageDiv.textContent = 'An error occurred while starting the download.';
-                messageDiv.classList.remove('hidden', 'success');
-                messageDiv.classList.add('error');
-                
-                // Re-enable button
-                downloadBtn.disabled = false;
-                downloadBtn.textContent = 'Start Downloads';
+                showError('An error occurred while starting the download.');
+                confirmDownloadBtn.disabled = false;
+                confirmDownloadBtn.textContent = 'Confirm & Download';
             });
         });
     }
@@ -136,13 +225,19 @@ document.addEventListener('DOMContentLoaded', function() {
     const newDownloadBtn = document.getElementById('new-download-btn');
     if (newDownloadBtn) {
         newDownloadBtn.addEventListener('click', function() {
-            // Show form and hide progress
+            // Show form and hide progress/preview
             downloadForm.style.display = 'block';
             progressSection.classList.add('hidden');
-            
+            previewSection.classList.add('hidden');
+
+            // Reset confirm button state
+            confirmDownloadBtn.disabled = false;
+            confirmDownloadBtn.textContent = 'Confirm & Download';
+            pendingFormData = null;
+
             // Reset form
             downloadForm.reset();
-            
+
             // Reset message
             messageDiv.classList.add('hidden');
         });
